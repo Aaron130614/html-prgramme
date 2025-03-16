@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>平台跳跃小游戏</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #1a1a2e;
+            touch-action: manipulation;
+        }
+        #game {
+            display: block;
+            margin: 20px auto;
+            background: linear-gradient(#2b5876, #4e4376);
+            border-radius: 10px;
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+        }
+        .ui {
+            position: fixed;
+            color: white;
+            font-family: 'Arial';
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            user-select: none;
+        }
+        #score { top: 20px; left: 20px; font-size: 24px; }
+        #restart {
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+            padding: 12px 24px;
+            background: rgba(0,0,0,0.8);
+            border-radius: 8px;
+            cursor: pointer;
+            display: none;
+        }
+        #tips {
+            bottom: 20px;
+            width: 100%;
+            text-align: center;
+            font-size: 16px;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="ui" id="score">SCORE: 0</div>
+    <div class="ui" id="restart">重新开始</div>
+    <div class="ui" id="tips">←→移动 空格跳跃</div>
+    <canvas id="game"></canvas>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const DPR = window.devicePixelRatio || 1;
+const W = 320, H = 568;
+
+// 初始化画布
+canvas.width = W * DPR;
+canvas.height = H * DPR;
+ctx.scale(DPR, DPR);
+
+// 物理常量
+const GRAVITY = 0.8;
+const JUMP_FORCE = -14;
+const SUPER_JUMP_FORCE = -20;
+const AIR_RESISTANCE = 0.02;
+const FRICTION = 0.9;
+const MAX_SPEED = 12;
+
+const Game = {
+    player: {
+        x: W/2, y: H-100,
+        size: 20,
+        vx: 0, vy: 0,
+        canJump: true,
+        trail: []
+    },
+    platforms: [],
+    springs: [],
+    score: 0,
+    cameraY: 0,
+    running: true,
+    
+    init() {
+        this.player = {
+            x: W/2, y: H-100,
+            size: 20,
+            vx: 0, vy: 0,
+            canJump: true,
+            trail: []
+        };
+        this.platforms = [];
+        this.springs = [];
+        this.score = 0;
+        this.cameraY = 0;
+        this.running = true;
+        
+        // 固定起始平台
+        this.platforms.push({
+            x: W/2 - 50,
+            y: H - 50,
+            width: 100,
+            height: 14,
+            vx: 0,
+            color: '#2ecc71',
+            originalColor: '#2ecc71'
+        });
+        
+        // 生成初始平台
+        for(let y = H-150; y > 100; y -= 120) {
+            this.platforms.push(this.createPlatform(y));
+        }
+    },
+    
+    createPlatform(y) {
+        const type = Math.random();
+        return {
+            x: Math.random()*(W-80),
+            y: y,
+            width: 80 + Math.random()*40,
+            height: 14,
+            vx: type > 0.8 ? (Math.random() - 0.5)*1.5 : 0,
+            color: type > 0.8 ? '#ff9f43' : '#2ecc71',
+            originalColor: type > 0.8 ? '#ff9f43' : '#2ecc71',
+            hasSpring: Math.random() > 0.9
+        };
+    },
+    
+    createSpring(x, y) {
+        return { x, y, vy: -0.5, frame: 0 };
+    },
+    
+    update() {
+        if(!this.running) return;
+        
+        // 玩家物理
+        this.player.vy = Math.min(this.player.vy + GRAVITY, MAX_SPEED);
+        this.player.y += this.player.vy;
+        this.player.x += this.player.vx;
+        this.player.vx *= (1 - AIR_RESISTANCE);
+        
+        // 轨迹效果
+        this.player.trail.push({x:this.player.x, y:this.player.y});
+        if(this.player.trail.length > 10) this.player.trail.shift();
+        
+        // 边界检测
+        this.player.x = Math.max(this.player.size, 
+            Math.min(W - this.player.size, this.player.x));
+        
+        // 摄像机跟踪
+        const targetY = this.player.y - H*0.3;
+        this.cameraY += (targetY - this.cameraY) * 0.1;
+        
+        // 平台碰撞
+        let onPlatform = false;
+        this.platforms.forEach(p => {
+            if(this.checkCollision(p)) {
+                if(this.player.vy > 0) {
+                    this.player.vy = p.hasSpring ? SUPER_JUMP_FORCE : JUMP_FORCE;
+                    this.player.canJump = true;
+                    p.color = '#e74c3c';
+                    setTimeout(() => p.color = p.originalColor, 200);
+                    
+                    if(p.hasSpring) {
+                        this.springs.push(this.createSpring(p.x + p.width/2, p.y));
+                        p.hasSpring = false;
+                    }
+                    
+                    if(p.vx !== 0) {
+                        this.player.vx += p.vx * 0.5;
+                    }
+                }
+                onPlatform = true;
+            }
+        });
+        
+        // 地面摩擦力
+        if(onPlatform) {
+            this.player.vx *= FRICTION;
+        }
+        
+        // 生成新平台
+        while(this.platforms[0].y > this.cameraY + H) {
+            this.platforms.push(this.createPlatform(
+                this.platforms[this.platforms.length-1].y - 100 - Math.random()*50
+            ));
+            this.platforms.shift();
+            this.score += 10;
+        }
+        
+        // 弹簧动画
+        this.springs.forEach(s => {
+            s.y += s.vy;
+            s.frame = (s.frame + 0.2) % 4;
+            if(s.y < this.cameraY - 50) this.springs = this.springs.filter(sp => sp !== s);
+        });
+        
+        // 游戏结束判断
+        if(this.player.y > this.cameraY + H + 50) {
+            this.running = false;
+            document.getElementById('restart').style.display = 'block';
+        }
+        
+        document.getElementById('score').textContent = `SCORE: ${this.score}`;
+    },
+    
+    draw() {
+        ctx.clearRect(0, 0, W, H);
+        
+        // 绘制轨迹
+        this.player.trail.forEach((p,i) => {
+            ctx.fillStyle = `rgba(255,100,100,${0.2 + i*0.08})`;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y - this.cameraY, this.player.size*(0.5 + i*0.05), 0, Math.PI*2);
+            ctx.fill();
+        });
+        
+        // 绘制平台
+        this.platforms.forEach(p => {
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.roundRect(p.x, p.y - this.cameraY, p.width, p.height, 7);
+            ctx.fill();
+            
+            if(p.hasSpring) {
+                ctx.drawImage(this.springImg, 
+                    Math.floor(p.x + p.width/2 - 8), 
+                    p.y - this.cameraY - 16
+                );
+            }
+        });
+        
+        // 绘制玩家
+        ctx.fillStyle = '#3498db';
+        ctx.beginPath();
+        ctx.arc(this.player.x, this.player.y - this.cameraY, 
+               this.player.size, 0, Math.PI*2);
+        ctx.fill();
+        
+        // 绘制弹簧动画
+        this.springs.forEach(s => {
+            ctx.drawImage(this.springAnim,
+                Math.floor(s.frame)*16, 0, 16, 16,
+                s.x - 8, s.y - this.cameraY - 8, 16, 16
+            );
+        });
+    },
+    
+    checkCollision(p) {
+        return this.player.x + this.player.size > p.x &&
+               this.player.x - this.player.size < p.x + p.width &&
+               this.player.y + this.player.size > p.y &&
+               this.player.y - this.player.size < p.y + p.height &&
+               this.player.vy >= 0;
+    }
+};
+
+// 资源预加载
+Game.springImg = new Image();
+Game.springImg.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAh0lEQVQ4T2NkoBAwUqifAQ0LxgePHj1iIBZzcnL+BxG/f/9mYGRkZPj37x8DqKx///4MDx89QpohygB8mkEGgAxjJNVAXA5EGYByBcQJ6E5A8QHICQ8fP2aABjGqD0BxAApEkBNAmBE1EEFhAApEkBNQgxEUjCAngAIREwM5HxQHABqOPp+W4fykAAAAAElFTkSuQmCC';
+
+Game.springAnim = new Image();
+Game.springAnim.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAACm53kpAAAAxElEQVR4nO3UMQrCQBBE0WcVj2CjF7DSC1jpBaz0AlZ6AStdG0HEQkQY+LMJ4sLMB1mWmX0zLJv6qVJq0Gg0Go3e0QK4VHx+BhZf8gC2wLrC8zWw+oAHsAT2wK7w/B7YfMgDWABn4Fjw+Qtw+LAHMAdOwLng8xfg9CUewAw4AJeCz1+B6xd5ADPgCNwKPn8H7l/mAUyBA3Av+PwDeH6hB5D6AP+5jUaj0R/3BmSIJCF0kQ4WAAAAAElFTkSuQmCC';
+
+// 游戏控制
+document.addEventListener('keydown', e => {
+    if(e.code === 'Space' && Game.running && Game.player.canJump) {
+        Game.player.vy = JUMP_FORCE;
+        Game.player.canJump = false;
+    }
+    if(e.code === 'Space' && !Game.running) {
+        Game.init();
+        document.getElementById('restart').style.display = 'none';
+    }
+});
+
+const keys = {};
+window.addEventListener('keydown', e => keys[e.key] = true);
+window.addEventListener('keyup', e => keys[e.key] = false);
+
+function updateInput() {
+    const MOVE_SPEED = 5;
+    if(keys.ArrowLeft) Game.player.vx -= 0.5;
+    if(keys.ArrowRight) Game.player.vx += 0.5;
+    Game.player.vx = Math.max(-MOVE_SPEED, Math.min(MOVE_SPEED, Game.player.vx));
+}
+
+// 重新开始
+document.getElementById('restart').addEventListener('click', () => {
+    Game.init();
+    document.getElementById('restart').style.display = 'none';
+});
+
+// 主循环
+Game.init();
+function loop() {
+    updateInput();
+    Game.update();
+    Game.draw();
+    requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
