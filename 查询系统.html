@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>图书管理系统</title>
+    <style>
+        body { 
+            background-color: #f0f8ff;
+            font-family: Arial, sans-serif;
+        }
+        .section { 
+            margin: 20px; 
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background-color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .admin-only { display: none; }
+        .user-login { display: none; }
+        input { 
+            margin: 5px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 200px;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-top: 10px;
+        }
+        th, td { 
+            border: 1px solid #ddd; 
+            padding: 8px; 
+            text-align: left; 
+        }
+        .login-container {
+            max-width: 400px;
+            margin: 50px auto;
+        }
+        .role-select {
+            margin: 10px 0;
+        }
+        .danger {
+            background-color: #ff4444;
+        }
+        .danger:hover {
+            background-color: #cc0000;
+        }
+        .book-list {
+            max-height: 400px;
+            overflow-y: auto;
+            margin: 15px 0;
+        }
+        .action-column {
+            width: 100px;
+        }
+        .fixed-bottom {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+        }
+        #collectionPage {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }
+        .collection-form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-width: 300px;
+        }
+        .export-btn {
+            background-color: #2196F3;
+            margin-bottom: 10px;
+        }
+        .delete-collection-btn {
+            background-color: #ff4444;
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <!-- 图书征集按钮 -->
+    <button class="fixed-bottom" onclick="showCollectionPage()">📚 图书征集</button>
+
+    <!-- 图书征集页面 -->
+    <div id="collectionPage" class="section">
+        <h2>图书征集建议</h2>
+        <form class="collection-form" onsubmit="submitCollection(event)">
+            <select id="userType" required>
+                <option value="">请选择身份</option>
+                <option value="学生">校内学生</option>
+                <option value="教师">校内教师</option>
+                <option value="校外">校外人员</option>
+            </select>
+            
+            <input type="text" id="bookTitle" 
+                   placeholder="请输入想看的书籍名称（必填）" required>
+            
+            <input type="text" id="bookVersion" 
+                   placeholder="请输入书籍版本（选填）">
+            
+            <button type="submit">提交建议</button>
+            <button type="button" onclick="hideCollectionPage()">取消</button>
+        </form>
+    </div>
+
+    <!-- 登录页面 -->
+    <div class="login-container section" id="loginSection">
+        <h2>图书管理系统登录</h2>
+        <div class="role-select">
+            <label>
+                <input type="radio" name="role" value="user" checked> 用户登录
+            </label>
+            <label>
+                <input type="radio" name="role" value="admin"> 管理员登录
+            </label>
+            <label>
+                <input type="radio" name="role" value="guest"> 游客登录
+            </label>
+        </div>
+
+        <div id="userLogin">
+            <input type="text" id="userID" placeholder="学工号">
+        </div>
+        <div id="adminLogin" style="display: none;">
+            <input type="password" id="adminPwd" placeholder="管理员密码">
+        </div>
+        <button onclick="login()">登录</button>
+    </div>
+
+    <!-- 主功能界面 -->
+    <div class="user-login" id="mainContent">
+        <!-- 文件上传区域 -->
+        <div class="section admin-only" id="fileSection">
+            <h2>数据导入（仅管理员）</h2>
+            <div>
+                <label>学生信息文件：
+                    <input type="file" id="studentFile" accept=".txt">
+                </label>
+            </div>
+            <div>
+                <label>图书信息文件：
+                    <input type="file" id="bookFile" accept=".txt">
+                </label>
+            </div>
+            <button onclick="loadFiles()">导入数据</button>
+            <p>文件格式要求：<br>
+            学生信息：学工号,姓名（每行一条）<br>
+            图书信息：书名,作者,架,面,格（每行一条）</p>
+        </div>
+
+        <!-- 账号管理 -->
+        <div class="section admin-only" id="accountSection">
+            <h2>账号管理</h2>
+            <input type="text" id="newID" placeholder="新学工号">
+            <input type="text" id="newName" placeholder="真实姓名">
+            <button onclick="addAccount()">添加账号</button>
+            
+            <h3>账号列表</h3>
+            <div id="accountList"></div>
+            
+            <h3>修改管理员密码</h3>
+            <input type="password" id="oldPwd" placeholder="旧密码">
+            <input type="password" id="newPwd" placeholder="新密码">
+            <button onclick="changeAdminPassword()">修改密码</button>
+        </div>
+
+        <!-- 图书管理 -->
+        <div class="section admin-only" id="bookManagement">
+            <h2>图书管理</h2>
+            <div class="book-list">
+                <table id="bookList">
+                    <thead>
+                        <tr>
+                            <th>书名</th>
+                            <th>作者</th>
+                            <th>位置</th>
+                            <th class="action-column">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bookListBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 图书录入 -->
+        <div class="section admin-only" id="addSection">
+            <h2>录入图书</h2>
+            <input type="text" id="bookName" placeholder="书名">
+            <input type="text" id="author" placeholder="作者">
+            <input type="number" id="shelf" placeholder="架">
+            <input type="number" id="side" placeholder="面">
+            <input type="number" id="grid" placeholder="格">
+            <button onclick="addBook()">添加图书</button>
+        </div>
+
+        <!-- 图书查询 -->
+        <div class="section">
+            <h2>图书查询</h2>
+            <input type="text" id="searchKey" placeholder="输入书名或作者">
+            <button onclick="searchBooks()">查询</button>
+            <div id="searchResults"></div>
+        </div>
+
+        <!-- 批量删除 -->
+        <div class="section admin-only" id="delSection">
+            <h2>批量删除（按位置）</h2>
+            <input type="number" id="delShelf" placeholder="架">
+            <input type="number" id="delSide" placeholder="面">
+            <input type="number" id="delGrid" placeholder="格">
+            <button onclick="deleteBooksByLocation()">批量删除</button>
+        </div>
+
+        <!-- 图书征集结果 -->
+        <div class="section admin-only" id="collectionResults">
+            <h2>图书征集结果</h2>
+            <button class="export-btn" onclick="exportCollections()">导出数据</button>
+            <div class="book-list">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>提交时间</th>
+                            <th>身份</th>
+                            <th>书籍名称</th>
+                            <th>版本信息</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="collectionList"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+<script>
+// 初始化存储
+(function initStorage(){
+    if(!localStorage.getItem('books')) localStorage.setItem('books', JSON.stringify([]));
+    if(!localStorage.getItem('users')) localStorage.setItem('users', JSON.stringify([]));
+    if(!localStorage.getItem('collections')) localStorage.setItem('collections', JSON.stringify([]));
+    if(!localStorage.getItem('adminPwd')) localStorage.setItem('adminPwd', 'xxtsg-gly');
+})();
+
+let currentUser = null;
+const adminPassword = localStorage.getItem('adminPwd');
+let collections = JSON.parse(localStorage.getItem('collections')) || [];
+
+// 图书征集功能
+function showCollectionPage() {
+    document.getElementById('collectionPage').style.display = 'block';
+}
+
+function hideCollectionPage() {
+    document.getElementById('collectionPage').style.display = 'none';
+}
+
+function submitCollection(event) {
+    event.preventDefault();
+    
+    const collection = {
+        timestamp: new Date().toISOString(),
+        type: document.getElementById('userType').value,
+        title: document.getElementById('bookTitle').value.trim(),
+        version: document.getElementById('bookVersion').value.trim(),
+    };
+
+    collections.push(collection);
+    localStorage.setItem('collections', JSON.stringify(collections));
+    
+    alert('提交成功！感谢您的建议');
+    hideCollectionPage();
+    if(currentUser?.role === 'admin') loadCollections();
+}
+
+// 删除征集信息功能
+function deleteCollection(timestamp) {
+    if (!confirm('确定要删除这条征集信息吗？')) return;
+    
+    collections = collections.filter(collection => collection.timestamp !== timestamp);
+    localStorage.setItem('collections', JSON.stringify(collections));
+    loadCollections();
+    alert('删除成功');
+}
+
+// 加载征集结果
+function loadCollections() {
+    const tbody = document.getElementById('collectionList');
+    tbody.innerHTML = collections.map(item => `
+        <tr>
+            <td>${new Date(item.timestamp).toLocaleString()}</td>
+            <td>${item.type}</td>
+            <td>${item.title}</td>
+            <td>${item.version || '无'}</td>
+            <td>
+                <button class="delete-collection-btn" 
+                        onclick="deleteCollection('${item.timestamp}')">
+                    删除
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+// 数据导出功能
+function exportCollections() {
+    if (collections.length === 0) {
+        alert('没有可导出的数据');
+        return;
+    }
+    
+    const dataStr = JSON.stringify(collections, null, 2);
+    const blob = new Blob([dataStr], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `book_collections_${new Date().getTime()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// 登录系统
+document.querySelectorAll('input[name="role"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        document.getElementById('userLogin').style.display = 
+            this.value === 'user' ? 'block' : 'none';
+        document.getElementById('adminLogin').style.display = 
+            this.value === 'admin' ? 'block' : 'none';
+    });
+});
+
+function login() {
+    const role = document.querySelector('input[name="role"]:checked').value;
+    
+    if (role === 'admin') {
+        const inputPwd = document.getElementById('adminPwd').value;
+        if (inputPwd === adminPassword) {
+            currentUser = { role: 'admin' };
+            showMainInterface();
+            loadAccountList();
+            loadBookList();
+            loadCollections();
+        } else {
+            alert('管理员密码错误');
+        }
+    } else if (role === 'user') {
+        const id = document.getElementById('userID').value;
+        const users = JSON.parse(localStorage.users);
+        const user = users.find(u => u.id === id);
+        user ? (currentUser = user, showMainInterface(), alert(`欢迎 ${user.name}`)) 
+             : alert('账号不存在');
+    } else {
+        currentUser = { role: 'guest' };
+        showMainInterface();
+        alert('游客模式仅显示部分信息');
+    }
+}
+
+function showMainInterface() {
+    document.getElementById('loginSection').style.display = 'none';
+    document.getElementById('mainContent').style.display = 'block';
+    if (currentUser.role === 'admin') {
+        document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'block');
+    }
+}
+
+// 保持其他原有功能代码不变
+// ...
+</script>
+</body>
+</html>
